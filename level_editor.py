@@ -1,6 +1,7 @@
 import bpy
 import json
 import os
+import math
 
 # ブレンダーに登録するアドオン情報
 bl_info = {
@@ -68,6 +69,52 @@ class WM_OT_level_export(bpy.types.Operator):
         self.report({'INFO'}, f"保存完了: {save_path}")
         return {'FINISHED'}
 
+class MYADDON_OT_export_scene(bpy.types.Operator):
+    bl_idname = "myaddon.myaddon_ot_export_scene"
+    bl_label = "シーン出力"
+    bl_description = "シーン情報をExportします"
+
+    def execute(self, context):
+        print("シーン情報をExportします")
+        
+        # シーン内の全オブジェクトを走査
+        for object in bpy.context.scene.objects:
+            # オブジェクトの種類と名前を表示
+            print(object.type + " - " + object.name)
+            
+            # ローカルトランスフォーム行列から平行移動、回転、スケーリングを抽出
+            # 型は Vector, Quaternion, Vector
+            trans, rot_quat, scale = object.matrix_local.decompose()
+            
+            # 回転を Quaternion から Euler (3軸での回転角) に変換
+            rot = rot_quat.to_euler()
+            
+            # ラジアンから度数法に変換
+            rot.x = math.degrees(rot.x)
+            rot.y = math.degrees(rot.y)
+            rot.z = math.degrees(rot.z)
+            
+            # トランスフォーム情報を整形して表示
+            print("Trans(%f,%f,%f)" % (trans.x, trans.y, trans.z))
+            print("Rot(%f,%f,%f)" % (rot.x, rot.y, rot.z))
+            print("Scale(%f,%f,%f)" % (scale.x, scale.y, scale.z))
+            # オブジェクトの詳細を表示
+            if object.parent:
+                print("Parent:" + object.parent.name)
+            print()
+            
+            # 親オブジェクトがある場合は名前を表示
+            if object.parent:
+                print("Parent: " + object.parent.name)
+            
+            # 次のオブジェクトとの区切り用の空行
+            print()
+
+        print("シーン情報をExportしました")
+        self.report({'INFO'}, "シーン情報をExportしました")
+        
+        return {'FINISHED'}
+
 # 2. メニュークラスの定義
 class TOPBAR_MT_my_menu(bpy.types.Menu):
     bl_idname = "TOPBAR_MT_my_menu"
@@ -79,6 +126,7 @@ class TOPBAR_MT_my_menu(bpy.types.Menu):
         # 自作オペレーターをメニューに登録
         layout.operator(MYADDON_OT_create_ico_sphere.bl_idname, text="ICO球を作成", icon='MESH_UVSPHERE')
         layout.operator(WM_OT_level_export.bl_idname, text="Level Export", icon='EXPORT')
+        layout.operator(MYADDON_OT_export_scene.bl_idname, icon='EXPORT')
         layout.separator()
         layout.operator("wm.url_open_preset", text="Manual", icon='HELP')
 
@@ -89,6 +137,7 @@ class TOPBAR_MT_my_menu(bpy.types.Menu):
 classes = (
     MYADDON_OT_create_ico_sphere,
     WM_OT_level_export,
+    MYADDON_OT_export_scene,
     TOPBAR_MT_my_menu,
 )
 
