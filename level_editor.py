@@ -98,6 +98,10 @@ class MYADDON_OT_export_scene(bpy.types.Operator):
             print("Trans(%f,%f,%f)" % (trans.x, trans.y, trans.z))
             print("Rot(%f,%f,%f)" % (rot.x, rot.y, rot.z))
             print("Scale(%f,%f,%f)" % (scale.x, scale.y, scale.z))
+            # オブジェクトの詳細を表示
+            if object.parent:
+                print("Parent:" + object.parent.name)
+            print()
             
             # 親オブジェクトがある場合は名前を表示
             if object.parent:
