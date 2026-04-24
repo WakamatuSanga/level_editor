@@ -112,11 +112,30 @@ def parse_scene_recursive(file, object, level):
     write_and_print(file, indent + "Rot(%f,%f,%f)\n" % (rot.x, rot.y, rot.z))
     write_and_print(file, indent + "Scale(%f,%f,%f)\n" % (scale.x, scale.y, scale.z))
     
+    # カスタムプロパティ 'file_name' がある場合は出力
+    if "file_name" in object:
+        write_and_print(file, indent + "N %s" % object["file_name"] + "\n")
+    
+    write_and_print(file, indent + "END\n")
+    
     # ルート直下のオブジェクトのみでfor文で処理する
     # （子オブジェクトは再帰関数で処理するため）
     for child in object.children:
         # シーン内にある子オブジェクトについて、同じ関数で処理する（再帰呼び出し）
         parse_scene_recursive(file, child, level + 1)
+
+
+class MYADDON_OT_add_filename(bpy.types.Operator):
+    bl_idname = "myaddon.myaddon_ot_add_filename"
+    bl_label = "ファイル名を追加"
+    bl_description = "オブジェクトにファイル名というカスタムプロパティを追加します"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        # 今選択中のオブジェクトに 'file_name' というカスタムプロパティを追加
+        context.object["file_name"] = ""
+        
+        return {'FINISHED'}
 
 
 class MYADDON_OT_export_scene(bpy.types.Operator, ExportHelper):
@@ -156,7 +175,26 @@ class MYADDON_OT_export_scene(bpy.types.Operator, ExportHelper):
         
         return {'FINISHED'}
 
-# 2. メニュークラスの定義
+# 2. Panelクラスの定義
+class OBJECT_PT_file_name(bpy.types.Panel):
+    bl_label = "FileName"
+    bl_idname = "OBJECT_PT_file_name"
+    bl_space_type = "PROPERTIES"
+    bl_region_type = "WINDOW"
+    bl_context = "object"
+
+    def draw(self, context):
+        layout = self.layout
+        
+        # パネルに登録する条件
+        if "file_name" in context.object:
+            # プロパティを表示
+            layout.prop(context.object, '["file_name"]', text=self.bl_label)
+        else:
+            # プロパティがない場合、オペレータ追加ボタンを表示
+            layout.operator(MYADDON_OT_add_filename.bl_idname)
+
+# 3. メニュークラスの定義
 class TOPBAR_MT_my_menu(bpy.types.Menu):
     bl_idname = "TOPBAR_MT_my_menu"
     bl_label = "MyMenu"
@@ -168,18 +206,20 @@ class TOPBAR_MT_my_menu(bpy.types.Menu):
         layout.operator(MYADDON_OT_create_ico_sphere.bl_idname, text="ICO球を作成", icon='MESH_UVSPHERE')
         layout.operator(WM_OT_level_export.bl_idname, text="Level Export", icon='EXPORT')
         layout.operator(MYADDON_OT_export_scene.bl_idname, icon='EXPORT')
+        layout.operator(MYADDON_OT_add_filename.bl_idname, icon='FILE')
         layout.separator()
         layout.operator("wm.url_open_preset", text="Manual", icon='HELP')
 
     def submenu(self, context):
         self.layout.menu(TOPBAR_MT_my_menu.bl_idname)
 
-# 3. クラスリストの更新
+# 4. クラスリストの更新
 classes = (
     MYADDON_OT_create_ico_sphere,
     WM_OT_level_export,
+    MYADDON_OT_add_filename,
     MYADDON_OT_export_scene,
-
+    OBJECT_PT_file_name,
     TOPBAR_MT_my_menu,
 )
 
