@@ -2,6 +2,7 @@ import bpy
 import json
 import os
 import math
+from bpy_extras.io_utils import ExportHelper
 
 # ブレンダーに登録するアドオン情報
 bl_info = {
@@ -69,49 +70,89 @@ class WM_OT_level_export(bpy.types.Operator):
         self.report({'INFO'}, f"保存完了: {save_path}")
         return {'FINISHED'}
 
-class MYADDON_OT_export_scene(bpy.types.Operator):
+def write_and_print(file, str):
+    """コンソールとファイルに同時出力する関数
+    
+    Args:
+        file: ファイルハンドル
+        str: 出力文字列
+    """
+    print(str)
+    file.write(str)
+
+
+def parse_scene_recursive(file, object, level):
+    """シーン構造を再帰的に処理する関数
+    
+    Args:
+        file: ファイルハンドル
+        object: 処理対象オブジェクト
+        level: インデントレベル (深さ)
+    """
+    # インデント文字列を生成（レベルごとに4つのスペース）
+    indent = "    " * level
+    
+    # オブジェクト情報を出力
+    write_and_print(file, indent + object.type + " - " + object.name + "\n")
+    
+    # ローカルトランスフォーム行列から平行移動、回転、スケーリングを抽出
+    # 型は Vector, Quaternion, Vector
+    trans, rot_quat, scale = object.matrix_local.decompose()
+    
+    # 回転を Quaternion から Euler (3軸での回転角) に変換
+    rot = rot_quat.to_euler()
+    
+    # ラジアンから度数法に変換
+    rot.x = math.degrees(rot.x)
+    rot.y = math.degrees(rot.y)
+    rot.z = math.degrees(rot.z)
+    
+    # トランスフォーム情報を整形して出力
+    write_and_print(file, indent + "Trans(%f,%f,%f)\n" % (trans.x, trans.y, trans.z))
+    write_and_print(file, indent + "Rot(%f,%f,%f)\n" % (rot.x, rot.y, rot.z))
+    write_and_print(file, indent + "Scale(%f,%f,%f)\n" % (scale.x, scale.y, scale.z))
+    
+    # ルート直下のオブジェクトのみでfor文で処理する
+    # （子オブジェクトは再帰関数で処理するため）
+    for child in object.children:
+        # シーン内にある子オブジェクトについて、同じ関数で処理する（再帰呼び出し）
+        parse_scene_recursive(file, child, level + 1)
+
+
+class MYADDON_OT_export_scene(bpy.types.Operator, ExportHelper):
     bl_idname = "myaddon.myaddon_ot_export_scene"
     bl_label = "シーン出力"
     bl_description = "シーン情報をExportします"
+    
+    filename_ext = ".scene"
+    filter_glob: bpy.props.StringProperty(
+        default="*.scene",
+        options={'HIDDEN'}
+    )
 
     def execute(self, context):
         print("シーン情報をExportします")
         
-        # シーン内の全オブジェクトを走査
-        for object in bpy.context.scene.objects:
-            # オブジェクトの種類と名前を表示
-            print(object.type + " - " + object.name)
-            
-            # ローカルトランスフォーム行列から平行移動、回転、スケーリングを抽出
-            # 型は Vector, Quaternion, Vector
-            trans, rot_quat, scale = object.matrix_local.decompose()
-            
-            # 回転を Quaternion から Euler (3軸での回転角) に変換
-            rot = rot_quat.to_euler()
-            
-            # ラジアンから度数法に変換
-            rot.x = math.degrees(rot.x)
-            rot.y = math.degrees(rot.y)
-            rot.z = math.degrees(rot.z)
-            
-            # トランスフォーム情報を整形して表示
-            print("Trans(%f,%f,%f)" % (trans.x, trans.y, trans.z))
-            print("Rot(%f,%f,%f)" % (rot.x, rot.y, rot.z))
-            print("Scale(%f,%f,%f)" % (scale.x, scale.y, scale.z))
-            # オブジェクトの詳細を表示
-            if object.parent:
-                print("Parent:" + object.parent.name)
-            print()
-            
-            # 親オブジェクトがある場合は名前を表示
-            if object.parent:
-                print("Parent: " + object.parent.name)
-            
-            # 次のオブジェクトとの区切り用の空行
-            print()
-
-        print("シーン情報をExportしました")
+        # ファイルディレクトリが存在しない場合は作成
+        save_dir = os.path.dirname(self.filepath)
+        if save_dir and not os.path.exists(save_dir):
+            os.makedirs(save_dir, exist_ok=True)
+        
+        # ファイルを開いて書き込み
+        with open(self.filepath, 'w') as file:
+            # シーン内でルート階層（親がない）のオブジェクトのみを走査
+            # ページで追加されたオブジェクト情報表示の処理を
+            # exportの with ブロック内に差し込む。
+            for object in bpy.context.scene.objects:
+                # 親がないオブジェクト（ルート階層）のみを処理対象にする
+                if object.parent:
+                    continue
+                # その後 print() だった部分を
+                # file.write() に置き換える。
+                parse_scene_recursive(file, object, 0)
+        
         self.report({'INFO'}, "シーン情報をExportしました")
+        print("シーン情報をExportしました")
         
         return {'FINISHED'}
 
@@ -138,6 +179,7 @@ classes = (
     MYADDON_OT_create_ico_sphere,
     WM_OT_level_export,
     MYADDON_OT_export_scene,
+
     TOPBAR_MT_my_menu,
 )
 
