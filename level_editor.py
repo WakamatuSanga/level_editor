@@ -3,8 +3,8 @@ import copy
 import gpu
 from gpu_extras.batch import batch_for_shader
 import json
-import os
 import math
+import mathutils
 from bpy_extras.io_utils import ExportHelper
 
 # ブレンダーに登録するアドオン情報
@@ -118,6 +118,15 @@ def parse_scene_recursive(file, object, level):
     # カスタムプロパティ 'file_name' がある場合は出力
     if "file_name" in object:
         write_and_print(file, indent + "N %s" % object["file_name"] + "\n")
+
+    if "collider" in object:
+        write_and_print(file, indent + "C %s\n" % object["collider"])
+        if "collider_center" in object:
+            cc = object["collider_center"]
+            write_and_print(file, indent + "CC %f %f %f\n" % (cc[0], cc[1], cc[2]))
+        if "collider_size" in object:
+            cs = object["collider_size"]
+            write_and_print(file, indent + "CS %f %f %f\n" % (cs[0], cs[1], cs[2]))
     
     write_and_print(file, indent + "END\n")
     
@@ -137,6 +146,21 @@ class MYADDON_OT_add_filename(bpy.types.Operator):
     def execute(self, context):
         # 今選択中のオブジェクトに 'file_name' というカスタムプロパティを追加
         context.object["file_name"] = ""
+        
+        return {'FINISHED'}
+
+
+class MYADDON_OT_add_collider(bpy.types.Operator):
+    bl_idname = "myaddon.myaddon_ot_add_collider"
+    bl_label = "コライダー追加"
+    bl_description = "オブジェクトにコライダー用のカスタムプロパティを追加します"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        # 今選択中のオブジェクトにコライダー情報のカスタムプロパティを追加
+        context.object["collider"] = "BOX"
+        context.object["collider_center"] = mathutils.Vector((0.0, 0.0, 0.0))
+        context.object["collider_size"] = mathutils.Vector((2.0, 2.0, 2.0))
         
         return {'FINISHED'}
 
@@ -197,15 +221,22 @@ class DrawCollider:
             (-0.5, 0.5, 0.5),
             (0.5, 0.5, 0.5),
         ]
-        size = (2.0, 2.0, 2.0)
 
         for obj in bpy.context.scene.objects:
+            if "collider" not in obj:
+                continue
+
+            center = mathutils.Vector((0.0, 0.0, 0.0))
+            size = mathutils.Vector((2.0, 2.0, 2.0))
+            if "collider_center" in obj:
+                center = mathutils.Vector(obj["collider_center"])
+            if "collider_size" in obj:
+                size = mathutils.Vector(obj["collider_size"])
+
             start = len(vertices["pos"])
             for offset in offsets:
-                pos = copy.copy(obj.location)
-                pos[0] += offset[0] * size[0]
-                pos[1] += offset[1] * size[1]
-                pos[2] += offset[2] * size[2]
+                pos = center + mathutils.Vector(offset) * size
+                pos = obj.matrix_world @ pos
                 vertices["pos"].append(pos)
 
             indices.append((start + 0, start + 1))
@@ -239,13 +270,28 @@ class OBJECT_PT_file_name(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         
-        # パネルに登録する条件
         if "file_name" in context.object:
-            # プロパティを表示
-            layout.prop(context.object, '["file_name"]', text=self.bl_label)
+            layout.prop(context.object, '["file_name"]', text="FileName")
         else:
-            # プロパティがない場合、オペレータ追加ボタンを表示
             layout.operator(MYADDON_OT_add_filename.bl_idname)
+
+
+class OBJECT_PT_collider(bpy.types.Panel):
+    bl_label = "Collider"
+    bl_idname = "OBJECT_PT_collider"
+    bl_space_type = "PROPERTIES"
+    bl_region_type = "WINDOW"
+    bl_context = "object"
+
+    def draw(self, context):
+        layout = self.layout
+        
+        if "collider" in context.object:
+            layout.prop(context.object, '["collider"]', text="Type")
+            layout.prop(context.object, '["collider_center"]', text="Center")
+            layout.prop(context.object, '["collider_size"]', text="Size")
+        else:
+            layout.operator(MYADDON_OT_add_collider.bl_idname)
 
 # 3. メニュークラスの定義
 class TOPBAR_MT_my_menu(bpy.types.Menu):
@@ -260,6 +306,7 @@ class TOPBAR_MT_my_menu(bpy.types.Menu):
         layout.operator(WM_OT_level_export.bl_idname, text="Level Export", icon='EXPORT')
         layout.operator(MYADDON_OT_export_scene.bl_idname, icon='EXPORT')
         layout.operator(MYADDON_OT_add_filename.bl_idname, icon='FILE')
+        layout.operator(MYADDON_OT_add_collider.bl_idname, icon='MESH_CUBE')
         layout.separator()
         layout.operator("wm.url_open_preset", text="Manual", icon='HELP')
 
@@ -271,8 +318,10 @@ classes = (
     MYADDON_OT_create_ico_sphere,
     WM_OT_level_export,
     MYADDON_OT_add_filename,
+    MYADDON_OT_add_collider,
     MYADDON_OT_export_scene,
     OBJECT_PT_file_name,
+    OBJECT_PT_collider,
     TOPBAR_MT_my_menu,
 )
 
