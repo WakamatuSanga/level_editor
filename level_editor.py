@@ -170,36 +170,74 @@ class MYADDON_OT_export_scene(bpy.types.Operator, ExportHelper):
     bl_label = "シーン出力"
     bl_description = "シーン情報をExportします"
     
-    filename_ext = ".scene"
+    filename_ext = ".json"
     filter_glob: bpy.props.StringProperty(
-        default="*.scene",
+        default="*.json",
         options={'HIDDEN'}
     )
 
+    def export_json(self):
+        json_object_root = dict()
+        json_object_root["name"] = "scene"
+        json_object_root["objects"] = list()
+
+        for obj in bpy.context.scene.objects:
+            if obj.parent:
+                continue
+            self.parse_scene_recursive_json(json_object_root["objects"], obj, 0)
+
+        json_text = json.dumps(json_object_root, ensure_ascii=False, indent=4)
+        with open(self.filepath, 'w', encoding='utf-8') as file:
+            file.write(json_text)
+
+    def parse_scene_recursive_json(self, data_parent, object, level):
+        json_object = dict()
+        json_object["type"] = object.type
+        json_object["name"] = object.name
+
+        trans, rot_quat, scale = object.matrix_local.decompose()
+        rot = rot_quat.to_euler()
+        rot.x = math.degrees(rot.x)
+        rot.y = math.degrees(rot.y)
+        rot.z = math.degrees(rot.z)
+
+        json_object["transform"] = {
+            "translation": [trans.x, trans.y, trans.z],
+            "rotation": [rot.x, rot.y, rot.z],
+            "scaling": [scale.x, scale.y, scale.z],
+        }
+
+        if "file_name" in object:
+            json_object["file_name"] = object["file_name"]
+
+        if "collider" in object:
+            collider = dict()
+            collider["type"] = object["collider"]
+            if "collider_center" in object:
+                collider["center"] = list(object["collider_center"])
+            if "collider_size" in object:
+                collider["size"] = list(object["collider_size"])
+            json_object["collider"] = collider
+
+        if object.children:
+            json_object["children"] = list()
+            for child in object.children:
+                self.parse_scene_recursive_json(json_object["children"], child, level + 1)
+
+        data_parent.append(json_object)
+
     def execute(self, context):
         print("シーン情報をExportします")
-        
-        # ファイルディレクトリが存在しない場合は作成
+
         save_dir = os.path.dirname(self.filepath)
         if save_dir and not os.path.exists(save_dir):
             os.makedirs(save_dir, exist_ok=True)
-        
-        # ファイルを開いて書き込み
-        with open(self.filepath, 'w') as file:
-            # シーン内でルート階層（親がない）のオブジェクトのみを走査
-            # ページで追加されたオブジェクト情報表示の処理を
-            # exportの with ブロック内に差し込む。
-            for object in bpy.context.scene.objects:
-                # 親がないオブジェクト（ルート階層）のみを処理対象にする
-                if object.parent:
-                    continue
-                # その後 print() だった部分を
-                # file.write() に置き換える。
-                parse_scene_recursive(file, object, 0)
-        
+
+        self.export_json()
+
         self.report({'INFO'}, "シーン情報をExportしました")
         print("シーン情報をExportしました")
-        
+
         return {'FINISHED'}
 
 # 描画用クラス
