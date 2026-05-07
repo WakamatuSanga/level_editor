@@ -1,4 +1,7 @@
 import bpy
+import copy
+import gpu
+from gpu_extras.batch import batch_for_shader
 import json
 import os
 import math
@@ -175,6 +178,56 @@ class MYADDON_OT_export_scene(bpy.types.Operator, ExportHelper):
         
         return {'FINISHED'}
 
+# 描画用クラス
+class DrawCollider:
+    handle = None
+
+    @staticmethod
+    def draw_collider():
+        vertices = {"pos": []}
+        indices = []
+
+        offsets = [
+            (-0.5, -0.5, -0.5),
+            (0.5, -0.5, -0.5),
+            (-0.5, 0.5, -0.5),
+            (0.5, 0.5, -0.5),
+            (-0.5, -0.5, 0.5),
+            (0.5, -0.5, 0.5),
+            (-0.5, 0.5, 0.5),
+            (0.5, 0.5, 0.5),
+        ]
+        size = (2.0, 2.0, 2.0)
+
+        for obj in bpy.context.scene.objects:
+            start = len(vertices["pos"])
+            for offset in offsets:
+                pos = copy.copy(obj.location)
+                pos[0] += offset[0] * size[0]
+                pos[1] += offset[1] * size[1]
+                pos[2] += offset[2] * size[2]
+                vertices["pos"].append(pos)
+
+            indices.append((start + 0, start + 1))
+            indices.append((start + 1, start + 3))
+            indices.append((start + 3, start + 2))
+            indices.append((start + 2, start + 0))
+            indices.append((start + 4, start + 5))
+            indices.append((start + 5, start + 7))
+            indices.append((start + 7, start + 6))
+            indices.append((start + 6, start + 4))
+            indices.append((start + 0, start + 4))
+            indices.append((start + 1, start + 5))
+            indices.append((start + 2, start + 6))
+            indices.append((start + 3, start + 7))
+
+        shader = gpu.shader.from_builtin('UNIFORM_COLOR')
+        batch = batch_for_shader(shader, 'LINES', vertices, indices=indices)
+        color = (0.5, 1.0, 1.0, 1.0)
+        shader.bind()
+        shader.uniform_float('color', color)
+        batch.draw(shader)
+
 # 2. Panelクラスの定義
 class OBJECT_PT_file_name(bpy.types.Panel):
     bl_label = "FileName"
@@ -228,10 +281,14 @@ def register():
     for cls in classes:
         bpy.utils.register_class(cls)
     bpy.types.TOPBAR_MT_editor_menus.append(TOPBAR_MT_my_menu.submenu)
+    DrawCollider.handle = bpy.types.SpaceView3D.draw_handler_add(DrawCollider.draw_collider, (), 'WINDOW', 'POST_VIEW')
     print("レベルエディタが有効化されました。")
 
 def unregister():
     bpy.types.TOPBAR_MT_editor_menus.remove(TOPBAR_MT_my_menu.submenu)
+    if DrawCollider.handle is not None:
+        bpy.types.SpaceView3D.draw_handler_remove(DrawCollider.handle, 'WINDOW')
+        DrawCollider.handle = None
     for cls in classes:
         bpy.utils.unregister_class(cls)
     print("レベルエディタが無効化されました。")
